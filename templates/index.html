@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPT-4o Realtime API Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 0;
+            min-height: 600px;
+        }
+
+        .chat-area {
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            padding: 30px;
+            border-left: 1px solid #e9ecef;
+        }
+
+        .status-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .status-card h3 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        .status-value {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .chat-messages {
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+            min-height: 300px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message.eva {
+            background: white;
+            color: #333;
+            border: 1px solid #e9ecef;
+        }
+
+        .message.system {
+            background: #ffeaa7;
+            color: #2d3436;
+            text-align: center;
+            margin: 10px auto;
+            font-style: italic;
+        }
+
+        .message.warning {
+            background: #fd79a8;
+            color: white;
+            text-align: center;
+            margin: 10px auto;
+        }
+
+        .message.error {
+            background: #e74c3c;
+            color: white;
+            text-align: center;
+            margin: 10px auto;
+        }
+
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input input:focus {
+            border-color: #667eea;
+        }
+
+        .chat-input button {
+            padding: 15px 25px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s;
+        }
+
+        .chat-input button:hover:not(:disabled) {
+            background: #5a6fd8;
+        }
+
+        .chat-input button:disabled {
+            background: #adb5bd;
+            cursor: not-allowed;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #adb5bd;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .connection-status {
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                border-left: none;
+                border-top: 1px solid #e9ecef;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 GPT-4o Realtime API</h1>
+            <p>Interactive voice and text chat with cost controls</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="chat-area">
+                <div id="connectionStatus" class="connection-status disconnected">
+                    Connecting to server...
+                </div>
+                
+                <div class="controls">
+                    <button id="startBtn" class="btn btn-primary" disabled>Start Session</button>
+                    <button id="endBtn" class="btn btn-danger" disabled>End Session</button>
+                </div>
+                
+                <div id="chatMessages" class="chat-messages">
+                    <div class="message system">
+                        Welcome! Click "Start Session" to begin chatting with GPT-4o Realtime API.
+                    </div>
+                </div>
+                
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+                    <button id="sendBtn" disabled>Send</button>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="status-card">
+                    <h3>📊 Session Status</h3>
+                    <div class="status-item">
+                        <span class="status-label">Status:</span>
+                        <span class="status-value" id="sessionStatus">Disconnected</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Session ID:</span>
+                        <span class="status-value" id="sessionId">None</span>
+                    </div>
+                </div>
+                
+                <div class="status-card">
+                    <h3>💰 Cost Tracking</h3>
+                    <div id="costLoading" class="loading">
+                        <div class="spinner"></div>
+                        Loading...
+                    </div>
+                    <div id="costInfo" style="display: none;">
+                        <div class="status-item">
+                            <span class="status-label">Daily Cost:</span>
+                            <span class="status-value" id="dailyCost">$0.00</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Daily Limit:</span>
+                            <span class="status-value" id="dailyLimit">$0.00</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Sessions Today:</span>
+                            <span class="status-value" id="dailySessions">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Remaining:</span>
+                            <span class="status-value" id="remainingCost">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="status-card">
+                    <h3>ℹ️ Information</h3>
+                    <div class="status-item">
+                        <span class="status-label">Text Mode:</span>
+                        <span class="status-value">Enabled</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Audio Mode:</span>
+                        <span class="status-value">Disabled</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Max Session:</span>
+                        <span class="status-value">5 minutes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class GPTRealtimeChat {
+            constructor() {
+                this.socket = io();
+                this.sessionId = null;
+                this.sessionActive = false;
+                this.messageBuffer = '';
+                
+                this.initializeElements();
+                this.setupEventListeners();
+                this.loadStatus();
+            }
+            
+            initializeElements() {
+                this.connectionStatus = document.getElementById('connectionStatus');
+                this.startBtn = document.getElementById('startBtn');
+                this.endBtn = document.getElementById('endBtn');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendBtn = document.getElementById('sendBtn');
+                this.chatMessages = document.getElementById('chatMessages');
+                this.sessionStatus = document.getElementById('sessionStatus');
+                this.sessionIdDisplay = document.getElementById('sessionId');
+            }
+            
+            setupEventListeners() {
+                // Socket events
+                this.socket.on('connect', () => this.onConnect());
+                this.socket.on('disconnect', () => this.onDisconnect());
+                this.socket.on('session_approved', (data) => this.onSessionApproved(data));
+                this.socket.on('session_denied', (data) => this.onSessionDenied(data));
+                this.socket.on('session_started', (data) => this.onSessionStarted(data));
+                this.socket.on('session_starting', (data) => this.onSessionStarting(data));
+                this.socket.on('session_start_failed', (data) => this.onSessionStartFailed(data));
+                this.socket.on('eva_response', (data) => this.onEvaResponse(data));
+                this.socket.on('message_sent', (data) => this.onMessageSent(data));
+                this.socket.on('cost_warning', (data) => this.onCostWarning(data));
+                this.socket.on('cost_limit_reached', (data) => this.onCostLimitReached(data));
+                this.socket.on('session_ended', (data) => this.onSessionEnded(data));
+                this.socket.on('error', (data) => this.onError(data));
+                
+                // UI events
+                this.startBtn.addEventListener('click', () => this.startSession());
+                this.endBtn.addEventListener('click', () => this.endSession());
+                this.sendBtn.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendMessage();
+                });
+            }
+            
+            onConnect() {
+                this.connectionStatus.textContent = 'Connected to server';
+                this.connectionStatus.className = 'connection-status connected';
+                this.startBtn.disabled = false;
+                this.addMessage('system', 'Connected to GPT-4o Realtime API server');
+                this.loadStatus();
+            }
+            
+            onDisconnect() {
+                this.connectionStatus.textContent = 'Disconnected from server';
+                this.connectionStatus.className = 'connection-status disconnected';
+                this.sessionActive = false;
+                this.updateUI();
+                this.addMessage('error', 'Disconnected from server');
+            }
+            
+            onSessionApproved(data) {
+                this.sessionId = data.session_id;
+                this.sessionIdDisplay.textContent = data.session_id.substring(0, 12) + '...';
+                
+                this.addMessage('system', `Session approved! Starting...`);
+                
+                if (data.warnings && data.warnings.length > 0) {
+                    data.warnings.forEach(warning => {
+                        this.addMessage('warning', warning);
+                    });
+                }
+                
+                // Auto-start the session
+                this.socket.emit('start_session', { session_id: this.sessionId });
+            }
+            
+            onSessionDenied(data) {
+                this.addMessage('error', `Session denied: ${data.reason}`);
+                this.loadStatus();
+            }
+            
+            onSessionStarting(data) {
+                this.addMessage('system', 'Session starting...');
+            }
+            
+            onSessionStarted(data) {
+                this.sessionActive = true;
+                this.sessionStatus.textContent = 'Active';
+                this.updateUI();
+                this.addMessage('system', 'Session started! You can now chat with GPT-4o.');
+            }
+            
+            onSessionStartFailed(data) {
+                this.addMessage('error', `Failed to start session: ${data.error}`);
+                this.sessionId = null;
+                this.sessionIdDisplay.textContent = 'None';
+                this.updateUI();
+            }
+            
+            onEvaResponse(data) {
+                if (data.type === 'delta') {
+                    // Accumulate text deltas
+                    this.messageBuffer += data.text;
+                    this.updateLastEvaMessage(this.messageBuffer);
+                } else {
+                    // Complete message
+                    if (this.messageBuffer) {
+                        this.finalizeLastEvaMessage();
+                        this.messageBuffer = '';
+                    }
+                    if (data.text) {
+                        this.addMessage('eva', data.text);
+                    }
+                }
+            }
+            
+            onMessageSent(data) {
+                this.addMessage('user', data.message);
+                this.messageBuffer = ''; // Reset buffer for new response
+            }
+            
+            onCostWarning(data) {
+                this.addMessage('warning', `Cost Warning: ${data.message}`);
+            }
+            
+            onCostLimitReached(data) {
+                this.addMessage('error', `Session ended: ${data.reason}`);
+                this.sessionActive = false;
+                this.sessionId = null;
+                this.updateUI();
+            }
+            
+            onSessionEnded(data) {
+                this.sessionActive = false;
+                this.sessionId = null;
+                this.sessionStatus.textContent = 'Ended';
+                this.sessionIdDisplay.textContent = 'None';
+                this.updateUI();
+                
+                const summary = data.summary;
+                if (summary && summary.session_summary) {
+                    const s = summary.session_summary;
+                    this.addMessage('system', 
+                        `Session ended. Cost: $${s.cost || 0} | Duration: ${s.duration_seconds || 0}s`
+                    );
+                }
+                
+                this.loadStatus();
+            }
+            
+            onError(data) {
+                this.addMessage('error', `Error: ${data.message}`);
+            }
+            
+            startSession() {
+                if (this.sessionActive) return;
+                
+                this.addMessage('system', 'Requesting session...');
+                this.socket.emit('request_session', { user_id: 'web_user' });
+            }
+            
+            endSession() {
+                if (!this.sessionActive || !this.sessionId) return;
+                
+                this.socket.emit('end_session', { session_id: this.sessionId });
+            }
+            
+            sendMessage() {
+                const message = this.messageInput.value.trim();
+                if (!message || !this.sessionActive || !this.sessionId) return;
+                
+                this.socket.emit('send_message', {
+                    session_id: this.sessionId,
+                    message: message
+                });
+                
+                this.messageInput.value = '';
+            }
+            
+            addMessage(type, text) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                messageDiv.textContent = text;
+                
+                if (type === 'eva') {
+                    messageDiv.setAttribute('data-eva-message', 'true');
+                }
+                
+                this.chatMessages.appendChild(messageDiv);
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+            
+            updateLastEvaMessage(text) {
+                let lastEvaMessage = this.chatMessages.querySelector('[data-eva-message]:last-child');
+                
+                if (!lastEvaMessage || lastEvaMessage.getAttribute('data-finalized') === 'true') {
+                    // Create new message
+                    lastEvaMessage = document.createElement('div');
+                    lastEvaMessage.className = 'message eva';
+                    lastEvaMessage.setAttribute('data-eva-message', 'true');
+                    this.chatMessages.appendChild(lastEvaMessage);
+                }
+                
+                lastEvaMessage.textContent = text;
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+            
+            finalizeLastEvaMessage() {
+                const lastEvaMessage = this.chatMessages.querySelector('[data-eva-message]:last-child');
+                if (lastEvaMessage) {
+                    lastEvaMessage.setAttribute('data-finalized', 'true');
+                }
+            }
+            
+            updateUI() {
+                this.startBtn.disabled = this.sessionActive;
+                this.endBtn.disabled = !this.sessionActive;
+                this.messageInput.disabled = !this.sessionActive;
+                this.sendBtn.disabled = !this.sessionActive;
+                
+                if (!this.sessionActive) {
+                    this.sessionStatus.textContent = 'Disconnected';
+                    this.sessionIdDisplay.textContent = 'None';
+                }
+            }
+            
+            async loadStatus() {
+                try {
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+                    
+                    if (data.cost_summary) {
+                        const cost = data.cost_summary;
+                        document.getElementById('dailyCost').textContent = `$${cost.totals.cost.toFixed(4)}`;
+                        document.getElementById('dailyLimit').textContent = `$${cost.limits.max_cost_per_day.toFixed(2)}`;
+                        document.getElementById('dailySessions').textContent = cost.totals.sessions;
+                        document.getElementById('remainingCost').textContent = `$${cost.remaining.cost.toFixed(2)}`;
+                        
+                        document.getElementById('costLoading').style.display = 'none';
+                        document.getElementById('costInfo').style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('Failed to load status:', error);
+                }
+            }
+        }
+        
+        // Initialize the chat when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new GPTRealtimeChat();
+        });
+    </script>
+</body>
+</html>
