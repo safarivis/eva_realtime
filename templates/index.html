@@ -196,6 +196,72 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .voice-controls {
+            display: flex;
+            gap: 15px;
+            margin-left: auto;
+            align-items: center;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-container input[type="checkbox"] {
+            display: none;
+        }
+
+        .toggle-slider {
+            width: 44px;
+            height: 24px;
+            background: #ccc;
+            border-radius: 12px;
+            position: relative;
+            transition: background 0.3s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+        }
+
+        .toggle-container input[type="checkbox"]:checked + .toggle-slider {
+            background: #667eea;
+        }
+
+        .toggle-container input[type="checkbox"]:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        .toggle-container input[type="checkbox"]:disabled + .toggle-slider {
+            background: #e9ecef;
+            cursor: not-allowed;
+        }
+
+        .toggle-container input[type="checkbox"]:disabled ~ .toggle-label {
+            color: #adb5bd;
+            cursor: not-allowed;
+        }
+
+        .toggle-label {
+            font-size: 0.9em;
+            font-weight: 500;
+            color: #495057;
         }
 
         .btn {
@@ -286,6 +352,17 @@
                 border-left: none;
                 border-top: 1px solid #e9ecef;
             }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .voice-controls {
+                margin-left: 0;
+                justify-content: space-between;
+                margin-top: 10px;
+            }
         }
     </style>
 </head>
@@ -294,6 +371,13 @@
         <div class="header">
             <h1>🤖 GPT-4o Realtime API</h1>
             <p>Interactive voice and text chat with cost controls</p>
+            <div style="margin-top: 15px;">
+                <a href="/dashboard" style="color: white; text-decoration: none; padding: 8px 16px; border: 2px solid rgba(255,255,255,0.3); border-radius: 20px; font-size: 0.9em; transition: all 0.3s;" 
+                   onmouseover="this.style.background='rgba(255,255,255,0.1)'" 
+                   onmouseout="this.style.background='transparent'">
+                    📊 Cost Dashboard
+                </a>
+            </div>
         </div>
         
         <div class="main-content">
@@ -305,6 +389,18 @@
                 <div class="controls">
                     <button id="startBtn" class="btn btn-primary" disabled>Start Session</button>
                     <button id="endBtn" class="btn btn-danger" disabled>End Session</button>
+                    <div class="voice-controls">
+                        <label class="toggle-container">
+                            <input type="checkbox" id="voiceListeningToggle" disabled>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">🎤 Real-time Listening</span>
+                        </label>
+                        <label class="toggle-container">
+                            <input type="checkbox" id="voiceResponseToggle" disabled>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">🔊 Voice Responses</span>
+                        </label>
+                    </div>
                 </div>
                 
                 <div id="chatMessages" class="chat-messages">
@@ -399,6 +495,13 @@
                 this.chatMessages = document.getElementById('chatMessages');
                 this.sessionStatus = document.getElementById('sessionStatus');
                 this.sessionIdDisplay = document.getElementById('sessionId');
+                this.voiceListeningToggle = document.getElementById('voiceListeningToggle');
+                this.voiceResponseToggle = document.getElementById('voiceResponseToggle');
+                
+                // Voice recognition setup
+                this.recognition = null;
+                this.isListening = false;
+                this.speechSynthesis = window.speechSynthesis;
             }
             
             setupEventListeners() {
@@ -424,6 +527,13 @@
                 this.messageInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') this.sendMessage();
                 });
+                
+                // Voice control events
+                this.voiceListeningToggle.addEventListener('change', () => this.toggleVoiceListening());
+                this.voiceResponseToggle.addEventListener('change', () => this.toggleVoiceResponse());
+                
+                // Initialize voice recognition if supported
+                this.initializeVoiceRecognition();
             }
             
             onConnect() {
@@ -490,10 +600,18 @@
                     // Complete message
                     if (this.messageBuffer) {
                         this.finalizeLastEvaMessage();
+                        // Speak the complete response if voice is enabled
+                        if (this.voiceResponseToggle.checked) {
+                            this.speakResponse(this.messageBuffer);
+                        }
                         this.messageBuffer = '';
                     }
                     if (data.text) {
                         this.addMessage('eva', data.text);
+                        // Speak individual complete messages too
+                        if (this.voiceResponseToggle.checked) {
+                            this.speakResponse(data.text);
+                        }
                     }
                 }
             }
@@ -596,15 +714,157 @@
                 }
             }
             
+            initializeVoiceRecognition() {
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    this.recognition = new SpeechRecognition();
+                    this.recognition.continuous = true;
+                    this.recognition.interimResults = true;
+                    this.recognition.lang = 'en-US';
+                    
+                    this.recognition.onresult = (event) => {
+                        let finalTranscript = '';
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            if (event.results[i].isFinal) {
+                                finalTranscript += event.results[i][0].transcript;
+                            }
+                        }
+                        
+                        if (finalTranscript.trim()) {
+                            this.sendVoiceMessage(finalTranscript.trim());
+                        }
+                    };
+                    
+                    this.recognition.onerror = (event) => {
+                        console.error('Speech recognition error:', event.error);
+                        this.addMessage('system', `Voice recognition error: ${event.error}`);
+                        if (this.isListening) {
+                            this.voiceListeningToggle.checked = false;
+                            this.isListening = false;
+                        }
+                    };
+                    
+                    this.recognition.onend = () => {
+                        if (this.isListening && this.sessionActive) {
+                            // Restart recognition if it ends but we're still supposed to be listening
+                            setTimeout(() => {
+                                if (this.isListening && this.sessionActive) {
+                                    this.recognition.start();
+                                }
+                            }, 100);
+                        }
+                    };
+                } else {
+                    this.addMessage('system', 'Voice recognition not supported in this browser');
+                }
+            }
+            
+            toggleVoiceListening() {
+                if (!this.sessionActive) {
+                    this.voiceListeningToggle.checked = false;
+                    this.addMessage('warning', 'Start a session first to enable voice listening');
+                    return;
+                }
+                
+                if (!this.recognition) {
+                    this.voiceListeningToggle.checked = false;
+                    this.addMessage('error', 'Voice recognition not available');
+                    return;
+                }
+                
+                if (this.voiceListeningToggle.checked) {
+                    this.startVoiceListening();
+                } else {
+                    this.stopVoiceListening();
+                }
+            }
+            
+            startVoiceListening() {
+                if (this.recognition && !this.isListening) {
+                    try {
+                        this.recognition.start();
+                        this.isListening = true;
+                        this.addMessage('system', '🎤 Voice listening started - speak naturally');
+                    } catch (error) {
+                        console.error('Failed to start voice recognition:', error);
+                        this.voiceListeningToggle.checked = false;
+                        this.addMessage('error', 'Failed to start voice listening');
+                    }
+                }
+            }
+            
+            stopVoiceListening() {
+                if (this.recognition && this.isListening) {
+                    this.recognition.stop();
+                    this.isListening = false;
+                    this.addMessage('system', '🎤 Voice listening stopped');
+                }
+            }
+            
+            sendVoiceMessage(transcript) {
+                if (!this.sessionActive || !this.sessionId) return;
+                
+                this.socket.emit('send_message', {
+                    session_id: this.sessionId,
+                    message: transcript
+                });
+            }
+            
+            toggleVoiceResponse() {
+                if (this.voiceResponseToggle.checked) {
+                    this.addMessage('system', '🔊 Voice responses enabled');
+                } else {
+                    this.addMessage('system', '🔊 Voice responses disabled');
+                    // Stop any current speech
+                    this.speechSynthesis.cancel();
+                }
+            }
+            
+            speakResponse(text) {
+                if (!this.voiceResponseToggle.checked) return;
+                
+                // Cancel any ongoing speech
+                this.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 0.8;
+                
+                // Use a pleasant voice if available
+                const voices = this.speechSynthesis.getVoices();
+                const preferredVoice = voices.find(voice => 
+                    voice.name.includes('Alex') || 
+                    voice.name.includes('Samantha') ||
+                    voice.name.includes('Google') ||
+                    voice.lang.startsWith('en')
+                );
+                
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                }
+                
+                this.speechSynthesis.speak(utterance);
+            }
+
             updateUI() {
                 this.startBtn.disabled = this.sessionActive;
                 this.endBtn.disabled = !this.sessionActive;
                 this.messageInput.disabled = !this.sessionActive;
                 this.sendBtn.disabled = !this.sessionActive;
+                this.voiceListeningToggle.disabled = !this.sessionActive;
+                this.voiceResponseToggle.disabled = !this.sessionActive;
                 
                 if (!this.sessionActive) {
                     this.sessionStatus.textContent = 'Disconnected';
                     this.sessionIdDisplay.textContent = 'None';
+                    // Stop voice listening if session ends
+                    if (this.isListening) {
+                        this.stopVoiceListening();
+                        this.voiceListeningToggle.checked = false;
+                    }
+                    // Stop any ongoing speech
+                    this.speechSynthesis.cancel();
                 }
             }
             
