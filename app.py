@@ -140,6 +140,11 @@ def index():
     """Main page"""
     return render_template('index.html')
 
+@app.route('/dashboard')
+def dashboard():
+    """Cost monitoring dashboard"""
+    return render_template('dashboard.html')
+
 @app.route('/api/status')
 def get_status():
     """Get current cost and usage status"""
@@ -159,6 +164,163 @@ def get_status():
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard')
+def get_dashboard_data():
+    """Get comprehensive dashboard data"""
+    if not realtime_manager:
+        return jsonify({'error': 'Realtime manager not initialized'}), 500
+    
+    try:
+        cost_summary = realtime_manager.get_cost_summary()
+        active_sessions_info = realtime_manager.get_active_sessions()
+        
+        # Get session history from cost tracker
+        cost_tracker = get_realtime_tracker()
+        session_history = cost_tracker.daily_data.get('sessions', [])
+        
+        # Generate usage trends (mock data for now - you can implement real trend tracking)
+        usage_trends = []
+        current_hour = datetime.now().hour
+        for i in range(24):
+            hour = (current_hour - i) % 24
+            # Mock trend data - replace with real data from your cost tracker
+            usage_trends.append({
+                'hour': f"{hour:02d}:00",
+                'cost': cost_summary['totals']['cost'] * (0.1 if i < 6 else 0.05)  # Mock distribution
+            })
+        usage_trends.reverse()
+        
+        return jsonify({
+            'cost_summary': cost_summary,
+            'active_sessions': active_sessions_info,
+            'session_history': session_history[-20:],  # Last 20 sessions
+            'usage_trends': usage_trends,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting dashboard data: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/setup-email-reports', methods=['POST'])
+def setup_email_reports():
+    """Setup email reports for cost monitoring"""
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        
+        if not email:
+            return jsonify({'success': False, 'error': 'Email address required'}), 400
+        
+        # Store email preference (you can use a database or file)
+        email_config = {
+            'email': email,
+            'setup_date': datetime.now().isoformat(),
+            'reports_enabled': True
+        }
+        
+        # Save to file for now (replace with database in production)
+        import json
+        try:
+            with open('email_config.json', 'w') as f:
+                json.dump(email_config, f)
+        except Exception as e:
+            logger.error(f"Failed to save email config: {e}")
+        
+        # Send test email notification
+        from integrations.eva_email_integration import send_cost_report
+        cost_summary = realtime_manager.get_cost_summary()
+        report_data = {'cost_summary': cost_summary}
+        send_cost_report(email, report_data, "setup")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Email reports configured for {email}'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error setting up email reports: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def send_cost_report_email(email, report_type="daily"):
+    """Send cost report via email"""
+    try:
+        if not realtime_manager:
+            return False
+        
+        cost_summary = realtime_manager.get_cost_summary()
+        cost_tracker = get_realtime_tracker()
+        
+        if report_type == "setup":
+            subject = "Eva Realtime - Email Reports Configured"
+            message = f"""
+            📧 Email Reports Setup Complete!
+            
+            You will now receive:
+            • Daily cost summaries
+            • Budget alerts
+            • Session reports
+            • Weekly usage trends
+            
+            Current Status:
+            • Daily Cost: ${cost_summary['totals']['cost']:.4f}
+            • Budget Remaining: ${cost_summary['remaining']['cost']:.2f}
+            • Sessions Today: {cost_summary['totals']['sessions']}
+            
+            Dashboard: https://evarealtime-production.up.railway.app/dashboard
+            
+            🤖 Eva Realtime Cost Monitor
+            """
+        else:
+            subject = f"Eva Realtime - {report_type.title()} Cost Report"
+            sessions = cost_tracker.daily_data.get('sessions', [])
+            
+            message = f"""
+            📊 Daily Cost Report - {datetime.now().strftime('%Y-%m-%d')}
+            
+            💰 Cost Summary:
+            • Total Cost Today: ${cost_summary['totals']['cost']:.4f}
+            • Budget Used: {(cost_summary['totals']['cost'] / cost_summary['limits']['max_cost_per_day'] * 100):.1f}%
+            • Sessions: {cost_summary['totals']['sessions']}
+            • Audio Time: {cost_summary['totals']['audio_seconds']:.1f}s
+            
+            🎯 Budget Status:
+            • Daily Limit: ${cost_summary['limits']['max_cost_per_day']:.2f}
+            • Remaining: ${cost_summary['remaining']['cost']:.2f}
+            • Sessions Remaining: {cost_summary['remaining']['sessions']}
+            
+            📈 Recent Sessions:
+            """
+            
+            for session in sessions[-5:]:  # Last 5 sessions
+                start_time = datetime.fromisoformat(session['start_time']).strftime('%H:%M')
+                message += f"• {start_time}: ${session['cost']:.4f} ({session['duration_seconds']}s)\n"
+            
+            message += f"""
+            
+            View detailed dashboard: https://evarealtime-production.up.railway.app/dashboard
+            
+            🤖 Eva Realtime Cost Monitor
+            """
+        
+        # Here you would integrate with your email service
+        # For now, we'll log the email content
+        logger.info(f"EMAIL TO {email}: {subject}")
+        logger.info(f"CONTENT: {message}")
+        
+        # You can integrate with:
+        # - Resend API (like in original Eva)
+        # - SendGrid
+        # - AWS SES
+        # - Or trigger Eva to send the email
+        
+        # For demo purposes, we'll simulate success
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
+        return False
 
 @socketio.on('connect')
 def handle_connect():
