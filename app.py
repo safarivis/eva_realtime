@@ -11,10 +11,9 @@ from typing import Dict, Any
 from flask import Flask, render_template, request, jsonify, session
 from flask_socketio import SocketIO, emit, disconnect
 import logging
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Import configuration
+from config import config
 
 # Import our realtime integration (copy the files here)
 import sys
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
+app.config['SECRET_KEY'] = config.SECRET_KEY
 
 # Initialize SocketIO
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -510,16 +509,16 @@ def handle_end_session(data):
         emit('error', {'message': str(e)})
 
 if __name__ == '__main__':
-    # Check for required environment variables
-    if not os.getenv('OPENAI_API_KEY'):
-        logger.error("OPENAI_API_KEY environment variable not set")
+    # Check for required configuration
+    if not config.validate_required_config():
+        logger.error("Required configuration missing. Please check OPENAI_API_KEY.")
         exit(1)
     
     # Initialize realtime manager
     init_realtime_manager()
     
-    # Get port from environment (Railway provides this)
-    port = int(os.getenv('PORT', 5000))
+    # Get port from configuration
+    port = config.PORT
     
     logger.info(f"Starting GPT-4o Realtime API server on port {port}")
     logger.info("Dashboard available at /dashboard")
