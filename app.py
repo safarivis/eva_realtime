@@ -522,6 +522,7 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     
     logger.info(f"Starting GPT-4o Realtime API server on port {port}")
+    logger.info("Dashboard available at /dashboard")
     
     # Run the app
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
