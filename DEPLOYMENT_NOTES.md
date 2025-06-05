@@ -123,11 +123,36 @@ warning_threshold = 0.8           # Warn at 80% of limits
 
 ## 🚀 **Deployment Pipeline**
 
+### **CRITICAL: Git Repository Structure**
+
+⚠️ **IMPORTANT**: This realtime app is a **git submodule** within the main Eva project.
+
+**Repository Structure:**
+```
+eva_web (main repo) ← Railway connected here
+├── realtime_app/ (git submodule) ← This repo: eva_realtime
+├── core/
+├── integrations/
+└── ...
+```
+
+**Deployment Workflow:**
+1. **Make changes** in `/realtime_app/` directory
+2. **Commit to submodule**: `cd realtime_app && git add . && git commit -m "..." && git push`
+3. **⚠️ CRITICAL**: Update main repo: `cd .. && git add realtime_app && git commit -m "Update realtime_app submodule" && git push`
+4. **Railway auto-deploys** from main repo (`eva_web`)
+
+**Common Mistake:**
+- ❌ Only pushing to `eva_realtime` repo (Railway won't see changes)
+- ✅ Must update submodule reference in `eva_web` repo for Railway deployment
+
 ### **Railway Configuration:**
+- **Connected to**: `safarivis/eva_web` (main repository)
+- **Watches**: `main` branch
+- **Detects changes**: When submodule references are updated
 - **`railway.json`** - Deployment settings
 - **`Procfile`** - Process definition
 - **Nixpacks** - Automatic build detection
-- **Environment variables** - Configuration
 
 ### **Environment Variables Required:**
 ```
@@ -135,6 +160,13 @@ OPENAI_API_KEY=sk-proj-...         # Your OpenAI API key
 SECRET_KEY=random-string-here      # Flask session secret
 PORT=5000                          # Port (Railway provides this)
 ```
+
+### **Auto-Merge Setup:**
+Enable auto-merge in GitHub repository settings:
+1. Go to repository settings → Pull Requests
+2. ✅ Check "Allow auto-merge"
+3. ✅ Check "Automatically delete head branches"
+4. This ensures Railway gets updates immediately
 
 ## 📈 **Usage Scenarios**
 
